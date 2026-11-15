@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { auditEvents, clinics, lots, memberInvites, members, products, stockMovements, tripAllocations, tripItems, trips } from "@/db/schema";
+import { auditEvents, clinics, lots, memberInvites, members, procedureItems, procedures, products, stockMovements, tripAllocations, tripItems, trips } from "@/db/schema";
 import { getChatGPTUser, requireChatGPTUser } from "./chatgpt-auth";
 
 export type Role = "admin" | "manager" | "doctor" | "viewer";
@@ -37,7 +37,7 @@ export async function currentUser(): Promise<ClinicUser> {
     }
     const clinicId = id();
     await db.batch([
-      db.insert(clinics).values({ id: clinicId, name: "Minha Clínica", createdAt: now() }),
+      db.insert(clinics).values({ id: clinicId, name: "Anora Clínica", createdAt: now() }),
       db.insert(members).values({ userId: identity.userId, clinicId, displayName: identity.displayName.slice(0, 120), email: identity.email.toLowerCase(), role: "admin", active: true, createdAt: now() }),
     ]);
     [member] = await db.select().from(members).where(eq(members.userId, identity.userId)).limit(1);
@@ -64,21 +64,25 @@ export async function dashboardData(user: ClinicUser) {
   const productRows = await db.select({ product: products, balance: sql<number>`coalesce(sum(case when ${stockMovements.location} = 'clinic' then ${stockMovements.deltaMilli} else 0 end), 0)` })
     .from(products).leftJoin(lots, eq(lots.productId, products.id)).leftJoin(stockMovements, eq(stockMovements.lotId, lots.id))
     .where(and(eq(products.clinicId, user.clinicId), eq(products.active, true))).groupBy(products.id).orderBy(asc(products.name));
-  const tripRows = await db.select({ trip: trips, responsible: members.displayName }).from(trips).innerJoin(members, eq(members.userId, trips.responsibleId))
+  const tripRows = await db.select({ trip: trips, responsible: members.displayName, procedureName: procedures.name }).from(trips).innerJoin(members, eq(members.userId, trips.responsibleId)).leftJoin(procedures, eq(procedures.id, trips.procedureId))
     .where(eq(trips.clinicId, user.clinicId)).orderBy(desc(trips.createdAt));
   const pendingItems = await db.select({ item: tripItems, product: products }).from(tripItems)
     .innerJoin(products, eq(products.id, tripItems.productId))
     .innerJoin(trips, eq(trips.id, tripItems.tripId))
     .where(eq(trips.clinicId, user.clinicId));
   const allocations = await db.select({ allocation: tripAllocations, lot: lots, product: products,
-    balance: sql<number>`coalesce(sum(case when ${stockMovements.location} = 'trip' then ${stockMovements.deltaMilli} else 0 end), 0)` })
+    balance: sql<number>`coalesce(sum(case when ${stockMovements.location} = 'trip' then ${stockMovements.deltaMilli} else 0 end), 0)`,
+    returnedMilli: sql<number>`coalesce(sum(case when ${stockMovements.location} = 'clinic' and ${stockMovements.type} = 'return' then ${stockMovements.deltaMilli} else 0 end), 0)` })
     .from(tripAllocations).innerJoin(trips, eq(trips.id, tripAllocations.tripId)).innerJoin(lots, eq(lots.id, tripAllocations.lotId)).innerJoin(products, eq(products.id, tripAllocations.productId))
     .leftJoin(stockMovements, and(eq(stockMovements.lotId, tripAllocations.lotId), eq(stockMovements.tripId, tripAllocations.tripId)))
     .where(eq(trips.clinicId, user.clinicId)).groupBy(tripAllocations.id);
   const team = await db.select().from(members).where(and(eq(members.clinicId, user.clinicId), eq(members.active, true))).orderBy(asc(members.displayName));
   const invitations = await db.select().from(memberInvites).where(eq(memberInvites.clinicId, user.clinicId)).orderBy(asc(memberInvites.displayName));
+  const procedureRows = await db.select({ procedure: procedures, item: procedureItems, product: products }).from(procedures)
+    .leftJoin(procedureItems, eq(procedureItems.procedureId, procedures.id)).leftJoin(products, eq(products.id, procedureItems.productId))
+    .where(and(eq(procedures.clinicId, user.clinicId), eq(procedures.active, true))).orderBy(asc(procedures.name));
   const ledger = await db.select({ movement: stockMovements, product: products, lot: lots, trip: trips }).from(stockMovements)
     .innerJoin(lots, eq(lots.id, stockMovements.lotId)).innerJoin(products, eq(products.id, lots.productId)).leftJoin(trips, eq(trips.id, stockMovements.tripId))
     .where(eq(stockMovements.clinicId, user.clinicId)).orderBy(desc(stockMovements.createdAt)).limit(100);
-  return { clinic, products: productRows, trips: tripRows, pendingItems, allocations, team, invitations, ledger };
+  return { clinic, products: productRows, trips: tripRows, pendingItems, allocations, team, invitations, procedures: procedureRows, ledger };
 }

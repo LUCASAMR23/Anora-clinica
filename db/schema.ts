@@ -26,6 +26,19 @@ export const products = sqliteTable("products", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 }, (t) => [uniqueIndex("products_clinic_name_unit_unique").on(t.clinicId, t.name, t.unit)]);
 
+export const procedures = sqliteTable("procedures", {
+  id: text("id").primaryKey(), clinicId: text("clinic_id").notNull().references(() => clinics.id),
+  name: text("name").notNull(), description: text("description"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, (t) => [uniqueIndex("procedures_clinic_name_unique").on(t.clinicId, t.name), index("procedures_clinic_idx").on(t.clinicId)]);
+
+export const procedureItems = sqliteTable("procedure_items", {
+  id: text("id").primaryKey(), procedureId: text("procedure_id").notNull().references(() => procedures.id),
+  productId: text("product_id").notNull().references(() => products.id),
+  plannedMilli: integer("planned_milli").notNull(),
+}, (t) => [uniqueIndex("procedure_item_product_unique").on(t.procedureId, t.productId)]);
+
 export const lots = sqliteTable("lots", {
   id: text("id").primaryKey(), clinicId: text("clinic_id").notNull().references(() => clinics.id),
   productId: text("product_id").notNull().references(() => products.id), code: text("code").notNull(),
@@ -39,6 +52,7 @@ export const lots = sqliteTable("lots", {
 export const trips = sqliteTable("trips", {
   id: text("id").primaryKey(), clinicId: text("clinic_id").notNull().references(() => clinics.id),
   destination: text("destination").notNull(), responsibleId: text("responsible_id").notNull().references(() => members.userId),
+  procedureId: text("procedure_id").references(() => procedures.id),
   departureDate: text("departure_date").notNull(), returnDate: text("return_date").notNull(),
   status: text("status", { enum: ["planning", "travel", "closed", "cancelled"] }).notNull().default("planning"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), closedAt: integer("closed_at", { mode: "timestamp_ms" }),

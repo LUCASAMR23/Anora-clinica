@@ -3,7 +3,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
-import { auditEvents, lots, memberInvites, members, products, stockMovements, tripAllocations, tripItems, trips } from "@/db/schema";
+import { auditEvents, lots, memberInvites, members, procedureItems, procedures, products, stockMovements, tripAllocations, tripItems, trips } from "@/db/schema";
 import { audit, currentUser, requireRole, toMilli } from "./clinic-data";
 
 const id = () => crypto.randomUUID();
@@ -44,13 +44,45 @@ export async function receiveStock(form: FormData) {
   await runBatch(db, commands); await audit(user, "stock.receipt", "lot", lot.id, `${product.name}: ${quantity}`); done();
 }
 
+export async function addProcedure(form: FormData) {
+  const user = await currentUser(); requireRole(user, ["admin", "manager"]);
+  const name = field(form, "name"); const description = String(form.get("description") ?? "").trim().slice(0, 500) || null;
+  const procedureId = id();
+  await getDb().batch([
+    getDb().insert(procedures).values({ id: procedureId, clinicId: user.clinicId, name, description, active: true, createdAt: stamp() }),
+    getDb().insert(auditEvents).values({ id: id(), clinicId: user.clinicId, actorId: user.userId, action: "procedure.create", entityType: "procedure", entityId: procedureId, detail: name, createdAt: stamp() }),
+  ]);
+  done();
+}
+
+export async function addProcedureItem(form: FormData) {
+  const user = await currentUser(); requireRole(user, ["admin", "manager"]);
+  const procedureId = field(form, "procedureId", 80), productId = field(form, "productId", 80), plannedMilli = toMilli(form.get("quantity"), "Quantidade do procedimento");
+  const db = getDb();
+  const [procedure] = await db.select().from(procedures).where(and(eq(procedures.id, procedureId), eq(procedures.clinicId, user.clinicId), eq(procedures.active, true))).limit(1);
+  const [product] = await db.select().from(products).where(and(eq(products.id, productId), eq(products.clinicId, user.clinicId), eq(products.active, true))).limit(1);
+  if (!procedure || !product) throw new Error("Procedimento ou material inválido.");
+  await db.insert(procedureItems).values({ id: id(), procedureId, productId, plannedMilli }).onConflictDoUpdate({ target: [procedureItems.procedureId, procedureItems.productId], set: { plannedMilli } });
+  await audit(user, "procedure.item.set", "procedure", procedureId, `${product.name}: ${plannedMilli}`); done();
+}
+
 export async function createTrip(form: FormData) {
   const user = await currentUser(); requireRole(user, ["admin", "manager"]);
   const destination = field(form, "destination"), responsibleId = field(form, "responsibleId", 80), departureDate = field(form, "departureDate", 10), returnDate = field(form, "returnDate", 10);
+  const requestedProcedureId = String(form.get("procedureId") ?? "").trim() || null;
   if (returnDate < departureDate) throw new Error("A data de retorno deve ser posterior à saída.");
   const db = getDb(); const [responsible] = await db.select().from(members).where(and(eq(members.userId, responsibleId), eq(members.clinicId, user.clinicId), eq(members.active, true))).limit(1);
   if (!responsible) throw new Error("Profissional responsável inválida.");
-  const tripId = id(); await db.insert(trips).values({ id: tripId, clinicId: user.clinicId, destination, responsibleId, departureDate, returnDate, status: "planning", createdAt: stamp(), closedAt: null });
+  let procedureId: string | null = null; let templateItems: { productId: string; plannedMilli: number }[] = [];
+  if (requestedProcedureId) {
+    const [procedure] = await db.select().from(procedures).where(and(eq(procedures.id, requestedProcedureId), eq(procedures.clinicId, user.clinicId), eq(procedures.active, true))).limit(1);
+    if (!procedure) throw new Error("Procedimento inválido.");
+    procedureId = procedure.id;
+    templateItems = await db.select({ productId: procedureItems.productId, plannedMilli: procedureItems.plannedMilli }).from(procedureItems).innerJoin(products, eq(products.id, procedureItems.productId)).where(and(eq(procedureItems.procedureId, procedureId), eq(products.clinicId, user.clinicId), eq(products.active, true)));
+  }
+  const tripId = id(); const commands: unknown[] = [db.insert(trips).values({ id: tripId, clinicId: user.clinicId, destination, responsibleId, procedureId, departureDate, returnDate, status: "planning", createdAt: stamp(), closedAt: null })];
+  for (const item of templateItems) commands.push(db.insert(tripItems).values({ id: id(), tripId, productId: item.productId, plannedMilli: item.plannedMilli }));
+  await runBatch(db, commands);
   await audit(user, "trip.create", "trip", tripId, destination); done();
 }
 

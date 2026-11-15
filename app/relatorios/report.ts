@@ -9,12 +9,13 @@ export const generatedAt = () => new Intl.DateTimeFormat("pt-BR", { dateStyle: "
 export const reportStatus = (status: string) => ({ planning: "Planejamento", travel: "Em campo", closed: "Concluída", cancelled: "Cancelada" }[status] ?? status);
 
 export function materialsForTrip(data: ReportData, tripId: string) {
-  return data.allocations.filter(({ allocation }) => allocation.tripId === tripId).map(({ allocation, product, lot, balance }) => ({
+  return data.allocations.filter(({ allocation }) => allocation.tripId === tripId).map(({ allocation, product, lot, balance, returnedMilli }) => ({
     product: product.name,
     unit: product.unit,
     lot: lot.code,
     sent: fromMilli(allocation.sentMilli),
     current: fromMilli(Number(balance)),
+    returned: fromMilli(Number(returnedMilli)),
   }));
 }
 

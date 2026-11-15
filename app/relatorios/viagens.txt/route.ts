@@ -6,11 +6,12 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await currentUser(); const data = await dashboardData(user);
   const lines = [`${data.clinic?.name ?? "ANORA CLÍNICA"} — RELATÓRIO DE MALAS E VIAGENS`, `Emitido em: ${generatedAt()}`, `Emitido por: ${user.displayName}`, ""];
-  for (const { trip, responsible } of data.trips) {
+  for (const { trip, responsible, procedureName } of data.trips) {
     lines.push(`${reportStatus(trip.status).toUpperCase()} — ${responsible}`, `Destino: ${trip.destination}`, `Período: ${printableDate(trip.departureDate)} a ${printableDate(trip.returnDate)}`);
+    if (procedureName) lines.push(`Procedimento: ${procedureName}`);
     const materials = materialsForTrip(data, trip.id);
     if (!materials.length) lines.push("Materiais: aguardando despacho.");
-    for (const item of materials) lines.push(`• ${item.product} | lote ${item.lot} | levado: ${item.sent} ${item.unit} | saldo na mala: ${item.current} ${item.unit}`);
+    for (const item of materials) lines.push(`• ${item.product} | lote ${item.lot} | levado: ${item.sent} ${item.unit} | retornou: ${item.returned} ${item.unit} | saldo na mala: ${item.current} ${item.unit}`);
     lines.push("");
   }
   if (!data.trips.length) lines.push("Nenhuma viagem cadastrada.");
