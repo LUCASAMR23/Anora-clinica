@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import { currentUser, dashboardData } from "@/app/clinic-data";
 import { generatedAt, materialsForTrip, printableDate, reportStatus } from "../report";
 import { PrintOnLoad } from "./print-on-load";
@@ -14,7 +15,7 @@ export default async function TripPrintReport() {
   return <main className="print-report">
     <PrintOnLoad />
     <header className="print-header">
-      <div><p className="print-eyebrow">RELATÓRIO OPERACIONAL</p><h1>{clinicName}</h1><p>Malas, viagens e materiais sob responsabilidade</p></div>
+      <div><img className="print-logo" src="/anora-logo.png" alt="Anora Clínica"/><p className="print-eyebrow">RELATÓRIO OPERACIONAL</p><h1>{clinicName}</h1><p>Malas, viagens e materiais sob responsabilidade</p></div>
       <div className="print-meta"><b>Emitido em</b><span>{timestamp}</span><b>Responsável pela emissão</b><span>{user.displayName}</span></div>
     </header>
     <section className="print-summary"><div><b>{data.trips.length}</b><span>viagens registradas</span></div><div><b>{active}</b><span>médicas em campo</span></div><div><b>{data.products.length}</b><span>materiais acompanhados</span></div></section>

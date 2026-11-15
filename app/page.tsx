@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-img-element */
+import Link from "next/link";
 import { addProcedure, addProcedureItem, addProduct, addTripItem, closeTrip, createTrip, deletePlanningTrip, dispatchTrip, inviteMember, receiveStock, recordUsage } from "./actions";
 import { currentUser, dashboardData, fromMilli } from "./clinic-data";
 import { chatGPTSignOutPath } from "./chatgpt-auth";
@@ -6,7 +8,13 @@ const today = new Date().toISOString().slice(0, 10);
 const tag: Record<string, string> = { planning: "Planejamento", travel: "Em campo", closed: "Concluída", cancelled: "Cancelada" };
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const { view } = await searchParams;
+  if (view !== "painel") return <Presentation />;
+  return <Dashboard />;
+}
+
+async function Dashboard() {
   const user = await currentUser(); const data = await dashboardData(user);
   const canManage = user.role === "admin" || user.role === "manager";
   const activeTrips = data.trips.filter(({ trip }) => trip.status === "travel").length;
@@ -17,11 +25,11 @@ export default async function Home() {
   const procedureItemsFor = (procedureId: string) => data.procedures.flatMap(({ item, product }) => item && product && item.procedureId === procedureId ? [{ item, product }] : []);
 
   return <main className="app-shell">
-    <aside className="app-sidebar"><a className="sidebar-brand" href="#visao-geral"><span className="brand-mark">A</span><span><b>Anora Clínica</b><small>GESTÃO SEGURA</small></span></a>
+    <aside className="app-sidebar"><Link className="sidebar-brand" href="/"><img className="sidebar-logo" src="/anora-logo.png" alt="Anora Clínica"/><span><b>Anora Clínica</b><small>GESTÃO SEGURA</small></span></Link>
       <nav aria-label="Navegação principal"><a href="#visao-geral">Visão geral</a><a href="#estoque">Estoque</a><a href="#procedimentos">Procedimentos</a><a href="#malas">Malas e viagens <span>{activeTrips}</span></a><a href="#relatorios">Relatórios</a><a href="#equipe">Equipe e acessos</a></nav>
       <div className="sidebar-footer"><p><b>{user.displayName}</b><small>{user.role === "admin" ? "Administradora" : user.role === "manager" ? "Gestora" : user.role === "doctor" ? "Médica" : "Consulta"}</small></p><a href={chatGPTSignOutPath("/entrar")} target="_top">Sair do sistema</a></div>
     </aside>
-    <div className="app-content"><header className="mobile-header"><a className="sidebar-brand" href="#visao-geral"><span className="brand-mark">A</span><b>Anora Clínica</b></a><a href={chatGPTSignOutPath("/entrar")} target="_top">Sair</a></header>
+    <div className="app-content"><header className="mobile-header"><Link className="sidebar-brand" href="/"><img className="sidebar-logo" src="/anora-logo.png" alt="Anora Clínica"/><b>Anora Clínica</b></Link><a href={chatGPTSignOutPath("/entrar")} target="_top">Sair</a></header>
       <section id="visao-geral" className="page-intro"><div><p className="eyebrow">PAINEL OPERACIONAL</p><h1>{data.clinic?.name ?? "Minha Clínica"}</h1><p>Estoque, malas e rastreabilidade em um só lugar.</p></div><span className="security-chip">● Ambiente protegido</span></section>
       <section className="grid gap-4 sm:grid-cols-3"><Stat label="Materiais cadastrados" value={String(data.products.length)} note="controle por lote"/><Stat label="Médicas em campo" value={String(activeTrips)} note="malas em andamento"/><Stat label="Atenções no estoque" value={String(lowStock)} note="mínimo ou abaixo"/></section>
 
@@ -57,3 +65,13 @@ export default async function Home() {
 
 function Stat({ label, value, note }: { label: string; value: string; note: string }) { return <div className="stat"><p>{label}</p><strong>{value}</strong><small>{note}</small></div>; }
 function Input({ name, label, type = "text", required = true, defaultValue, step }: { name: string; label: string; type?: string; required?: boolean; defaultValue?: string; step?: string }) { return <label>{label}<input name={name} type={type} required={required} defaultValue={defaultValue} step={step}/></label>; }
+
+function Presentation() {
+  return <main className="presentation-page">
+    <header className="presentation-nav"><Link href="/" className="presentation-brand"><img src="/anora-logo.png" alt="Anora Clínica"/></Link><div><a href="#essencia">A clínica</a><a href="#experiencia">Experiência</a><a className="presentation-access" href="/entrar">Acessar sistema</a></div></header>
+    <section className="presentation-hero"><div className="hero-copy"><p className="hero-kicker">ANORA CLÍNICA</p><h1>Cuidado preciso,<br/><em>presença memorável.</em></h1><p>Uma experiência clínica desenhada nos detalhes: acolhimento, excelência e segurança em cada etapa.</p><a className="hero-cta" href="/entrar">Entrar na plataforma <span>→</span></a><div className="hero-notes"><span>Atendimento personalizado</span><span>Gestão clínica segura</span></div></div><div className="hero-portrait"><div className="portrait-frame"><img src="/dra-marilia.png" alt="Profissional da Anora Clínica"/></div><p>ANORA · CLÍNICA</p></div></section>
+    <section id="essencia" className="presentation-story"><div><p className="hero-kicker">A ESSÊNCIA ANORA</p><h2>O cuidado mora nos detalhes.</h2></div><p>Uma clínica contemporânea, humana e sofisticada. A plataforma Anora organiza a operação para que a equipe possa se concentrar no que mais importa: pessoas.</p></section>
+    <section id="experiencia" className="presentation-values"><article><b>01</b><h3>Excelência</h3><p>Processos claros e materiais acompanhados com rigor.</p></article><article><b>02</b><h3>Presença</h3><p>Uma jornada acolhedora, da preparação ao retorno.</p></article><article><b>03</b><h3>Confiança</h3><p>Informações protegidas e rastreáveis para a equipe.</p></article></section>
+    <footer className="presentation-footer"><img src="/anora-logo.png" alt="Anora"/><span>Gestão clínica segura</span><a href="/entrar">Área restrita →</a></footer>
+  </main>;
+}
