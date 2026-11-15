@@ -20,7 +20,7 @@ export function toMilli(value: FormDataEntryValue | null, label: string, zero = 
 export const fromMilli = (value: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(value / 1000);
 
 export async function currentUser(): Promise<ClinicUser> {
-  const identity = await requireChatGPTUser("/");
+  const identity = await requireChatGPTUser("/entrar");
   const db = getDb();
   let [member] = await db.select().from(members).where(eq(members.userId, identity.userId)).limit(1);
   if (!member) {
@@ -66,12 +66,15 @@ export async function dashboardData(user: ClinicUser) {
     .where(and(eq(products.clinicId, user.clinicId), eq(products.active, true))).groupBy(products.id).orderBy(asc(products.name));
   const tripRows = await db.select({ trip: trips, responsible: members.displayName }).from(trips).innerJoin(members, eq(members.userId, trips.responsibleId))
     .where(eq(trips.clinicId, user.clinicId)).orderBy(desc(trips.createdAt));
-  const pendingItems = await db.select({ item: tripItems, product: products }).from(tripItems).innerJoin(products, eq(products.id, tripItems.productId));
+  const pendingItems = await db.select({ item: tripItems, product: products }).from(tripItems)
+    .innerJoin(products, eq(products.id, tripItems.productId))
+    .innerJoin(trips, eq(trips.id, tripItems.tripId))
+    .where(eq(trips.clinicId, user.clinicId));
   const allocations = await db.select({ allocation: tripAllocations, lot: lots, product: products,
     balance: sql<number>`coalesce(sum(case when ${stockMovements.location} = 'trip' then ${stockMovements.deltaMilli} else 0 end), 0)` })
-    .from(tripAllocations).innerJoin(lots, eq(lots.id, tripAllocations.lotId)).innerJoin(products, eq(products.id, tripAllocations.productId))
+    .from(tripAllocations).innerJoin(trips, eq(trips.id, tripAllocations.tripId)).innerJoin(lots, eq(lots.id, tripAllocations.lotId)).innerJoin(products, eq(products.id, tripAllocations.productId))
     .leftJoin(stockMovements, and(eq(stockMovements.lotId, tripAllocations.lotId), eq(stockMovements.tripId, tripAllocations.tripId)))
-    .groupBy(tripAllocations.id);
+    .where(eq(trips.clinicId, user.clinicId)).groupBy(tripAllocations.id);
   const team = await db.select().from(members).where(and(eq(members.clinicId, user.clinicId), eq(members.active, true))).orderBy(asc(members.displayName));
   const invitations = await db.select().from(memberInvites).where(eq(memberInvites.clinicId, user.clinicId)).orderBy(asc(memberInvites.displayName));
   const ledger = await db.select({ movement: stockMovements, product: products, lot: lots, trip: trips }).from(stockMovements)

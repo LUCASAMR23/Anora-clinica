@@ -71,6 +71,19 @@ export async function addTripItem(form: FormData) {
   await audit(user, "trip.plan_item", "trip", tripId, productId); done();
 }
 
+/** Removes only a draft trip. Trips that have moved stock must remain as a traceable record. */
+export async function deletePlanningTrip(form: FormData) {
+  const user = await currentUser(); requireRole(user, ["admin", "manager"]);
+  const tripId = field(form, "tripId", 80); const db = getDb();
+  const [trip] = await db.select().from(trips).where(and(eq(trips.id, tripId), eq(trips.clinicId, user.clinicId), eq(trips.status, "planning"))).limit(1);
+  if (!trip) throw new Error("Somente planejamentos sem despacho podem ser excluídos.");
+  await db.batch([
+    db.delete(tripItems).where(eq(tripItems.tripId, tripId)),
+    db.delete(trips).where(eq(trips.id, tripId)),
+  ]);
+  await audit(user, "trip.delete_draft", "trip", tripId, trip.destination); done();
+}
+
 export async function dispatchTrip(form: FormData) {
   const user = await currentUser(); requireRole(user, ["admin", "manager"]); const tripId = field(form, "tripId", 80); const db = getDb();
   const [trip] = await db.select().from(trips).where(and(eq(trips.id, tripId), eq(trips.clinicId, user.clinicId), eq(trips.status, "planning"))).limit(1);
